@@ -110,6 +110,79 @@ constexpr uint32_t get_num_mma_q(const uint32_t cta_tile_q) {
   }
 }
 
+template <uint32_t NUM_WARPS_KV, uint32_t CTA_TILE_Q, uint32_t CTA_TILE_KV, uint32_t HEAD_DIM_QK,
+          uint32_t HEAD_DIM_VO, typename DTypeQ, typename DTypeKV, typename DTypeO>
+struct SharedStorageQKVO {
+  union {
+    struct {
+      alignas(16) DTypeQ q_smem[CTA_TILE_Q * HEAD_DIM_QK];
+      alignas(16) DTypeKV k_smem[CTA_TILE_KV * HEAD_DIM_QK];
+      alignas(16) DTypeKV v_smem[CTA_TILE_KV * HEAD_DIM_VO];
+    };
+    struct {  // NOTE(Zihao): synchronize attention states across warps
+      alignas(
+          16) std::conditional_t<NUM_WARPS_KV == 1, float[1],
+                                 float[NUM_WARPS_KV * CTA_TILE_Q * HEAD_DIM_VO]> cta_sync_o_smem;
+      alignas(16) std::conditional_t<NUM_WARPS_KV == 1, float2[1],
+                                     float2[NUM_WARPS_KV * CTA_TILE_Q]> cta_sync_md_smem;
+    };
+    alignas(16) DTypeO smem_o[CTA_TILE_Q * HEAD_DIM_VO];
+  };
+};
+
+template <MaskMode MASK_MODE_, uint32_t CTA_TILE_Q_, uint32_t NUM_MMA_Q_, uint32_t NUM_MMA_KV_,
+          uint32_t NUM_MMA_D_QK_, uint32_t NUM_MMA_D_VO_, uint32_t NUM_WARPS_Q_,
+          uint32_t NUM_WARPS_KV_, PosEncodingMode POS_ENCODING_MODE_, typename DTypeQ_,
+          typename DTypeKV_, typename DTypeO_, typename DTypeQKAccum_, typename IdType_,
+          typename AttentionVariant_>
+struct KernelTraits {
+  static constexpr MaskMode MASK_MODE = MASK_MODE_;
+  static constexpr uint32_t NUM_MMA_Q = NUM_MMA_Q_;
+  static constexpr uint32_t NUM_MMA_KV = NUM_MMA_KV_;
+  static constexpr uint32_t NUM_MMA_D_QK = NUM_MMA_D_QK_;
+  static constexpr uint32_t NUM_MMA_D_VO = NUM_MMA_D_VO_;
+  static constexpr uint32_t NUM_WARPS_Q = NUM_WARPS_Q_;
+  static constexpr uint32_t NUM_WARPS_KV = NUM_WARPS_KV_;
+  static constexpr uint32_t NUM_THREADS = NUM_WARPS_Q * NUM_WARPS_KV * WARP_SIZE;
+  static constexpr uint32_t NUM_WARPS = NUM_WARPS_Q * NUM_WARPS_KV;
+  static constexpr uint32_t HEAD_DIM_QK = NUM_MMA_D_QK * 16;
+  static constexpr uint32_t HEAD_DIM_VO = NUM_MMA_D_VO * 16;
+  static constexpr uint32_t UPCAST_STRIDE_Q = HEAD_DIM_QK / upcast_size<DTypeQ_>();
+  static constexpr uint32_t UPCAST_STRIDE_K = HEAD_DIM_QK / upcast_size<DTypeKV_>();
+  static constexpr uint32_t UPCAST_STRIDE_V = HEAD_DIM_VO / upcast_size<DTypeKV_>();
+  static constexpr uint32_t UPCAST_STRIDE_O = HEAD_DIM_VO / upcast_size<DTypeO_>();
+  static constexpr uint32_t CTA_TILE_Q = CTA_TILE_Q_;
+  static constexpr uint32_t CTA_TILE_KV = NUM_MMA_KV * NUM_WARPS_KV * 16;
+
+  static constexpr SwizzleMode SWIZZLE_MODE_Q = SwizzleMode::k128B;
+  static constexpr SwizzleMode SWIZZLE_MODE_KV =
+      (sizeof(DTypeKV_) == 1 && HEAD_DIM_VO == 64) ? SwizzleMode::k64B : SwizzleMode::k128B;
+  static constexpr uint32_t KV_THR_LAYOUT_ROW = SWIZZLE_MODE_KV == SwizzleMode::k128B ? 4 : 8;
+  static constexpr uint32_t KV_THR_LAYOUT_COL = SWIZZLE_MODE_KV == SwizzleMode::k128B ? 8 : 4;
+  static constexpr PosEncodingMode POS_ENCODING_MODE = POS_ENCODING_MODE_;
+  using DTypeQ = DTypeQ_;
+  using DTypeKV = DTypeKV_;
+  using DTypeO = DTypeO_;
+  using DTypeQKAccum = DTypeQKAccum_;
+  using IdType = IdType_;
+  using AttentionVariant = AttentionVariant_;
+
+  static constexpr bool IsInvalid() {
+    return ((NUM_MMA_D_VO < 4) || (NUM_MMA_D_VO == 4 && NUM_MMA_KV % 2 == 1) ||
+            (POS_ENCODING_MODE == PosEncodingMode::kRoPELlama && NUM_MMA_D_VO > 4 &&
+             NUM_MMA_D_VO % (2 * NUM_WARPS_Q) != 0) ||
+            (NUM_MMA_Q * (8 * NUM_MMA_D_VO + 2 * sizeof(DTypeQKAccum) * NUM_MMA_KV) >= 256) ||
+            (sizeof(DTypeKV) == 1 && NUM_MMA_KV * 2 % NUM_WARPS_Q != 0) ||
+            (sizeof(DTypeKV) == 1 && POS_ENCODING_MODE == PosEncodingMode::kRoPELlama));
+  }
+
+  using SharedStorage = SharedStorageQKVO<NUM_WARPS_KV, CTA_TILE_Q, CTA_TILE_KV, HEAD_DIM_QK,
+                                          HEAD_DIM_VO, DTypeQ, DTypeKV, DTypeO>;
+
+  static constexpr DTypeQKAccum MaskFillValue =
+      AttentionVariant::use_softmax ? DTypeQKAccum(-math::inf) : DTypeQKAccum(0.f);
+};
+
 namespace {
 
 template <PosEncodingMode POS_ENCODING_MODE, typename DTypeKV, typename DTypeQKAccum>
@@ -1776,29 +1849,46 @@ __launch_bounds__(NUM_WARPS_Q* NUM_WARPS_KV* WARP_SIZE) void BatchPrefillWithRag
 #endif
 }
 
-template <MaskMode MASK_MODE, PosEncodingMode POS_ENCODING_MODE, uint32_t NUM_MMA_Q,
-          uint32_t NUM_MMA_D, uint32_t NUM_MMA_KV, uint32_t NUM_WARPS_Q, uint32_t NUM_WARPS_KV,
-          typename DTypeQKAccum, typename AttentionVariant>
-__global__
-__launch_bounds__(NUM_WARPS_Q* NUM_WARPS_KV* WARP_SIZE) void BatchPrefillWithPagedKVCacheKernel(
-    const uint_fastdiv group_size,
+template <typename KTraits, typename Params>
+__global__ __launch_bounds__(KTraits::NUM_THREADS) void BatchPrefillWithPagedKVCacheKernel(
 #if defined(__HIPCC__) || (defined(__clang__) && defined(__HIP__)) || defined(__HIPCC_RTC__)
-    const typename AttentionVariant::ParamsT params) {
+    const Params params) {
 #else
-    const __grid_constant__ typename AttentionVariant::ParamsT params) {
+    const __grid_constant__ Params params) {
 #endif
-  using DTypeQ = typename AttentionVariant::DTypeQ;
-
+using DTypeQ = typename Params::DTypeQ;
 #if !(defined(__HIPCC__) || (defined(__clang__) && defined(__HIP__)) || defined(__HIPCC_RTC__))
   #if (__CUDA_ARCH__ < 800)
-    if constexpr (std::is_same_v<DTypeQ, gpu_bfloat16>) {
+    if constexpr (std::is_same_v<DTypeQ, nv_bfloat16>) {
       FLASHINFER_RUNTIME_ASSERT("Prefill kernels do not support bf16 on sm75.");
     } else {
   #endif
 #endif
-    using DTypeKV = typename AttentionVariant::DTypeKV;
-    using DTypeO = typename AttentionVariant::DTypeO;
-    using IdType = typename AttentionVariant::IdType;
+    using DTypeKV = typename Params::DTypeKV;
+    using DTypeO = typename Params::DTypeO;
+    using IdType = typename Params::IdType;
+    using DTypeQKAccum = typename KTraits::DTypeQKAccum;
+    using AttentionVariant = typename KTraits::AttentionVariant;
+    [[maybe_unused]] constexpr uint32_t NUM_MMA_Q = KTraits::NUM_MMA_Q;
+    [[maybe_unused]] constexpr uint32_t NUM_MMA_KV = KTraits::NUM_MMA_KV;
+    [[maybe_unused]] constexpr uint32_t NUM_MMA_D_QK = KTraits::NUM_MMA_D_QK;
+    [[maybe_unused]] constexpr uint32_t NUM_MMA_D_VO = KTraits::NUM_MMA_D_VO;
+    [[maybe_unused]] constexpr uint32_t HEAD_DIM_QK = KTraits::HEAD_DIM_QK;
+    [[maybe_unused]] constexpr uint32_t HEAD_DIM_VO = KTraits::HEAD_DIM_VO;
+    [[maybe_unused]] constexpr uint32_t UPCAST_STRIDE_Q = KTraits::UPCAST_STRIDE_Q;
+    [[maybe_unused]] constexpr uint32_t UPCAST_STRIDE_K = KTraits::UPCAST_STRIDE_K;
+    [[maybe_unused]] constexpr uint32_t UPCAST_STRIDE_V = KTraits::UPCAST_STRIDE_V;
+    [[maybe_unused]] constexpr uint32_t UPCAST_STRIDE_O = KTraits::UPCAST_STRIDE_O;
+    [[maybe_unused]] constexpr uint32_t NUM_WARPS_Q = KTraits::NUM_WARPS_Q;
+    [[maybe_unused]] constexpr uint32_t NUM_WARPS_KV = KTraits::NUM_WARPS_KV;
+    [[maybe_unused]] constexpr SwizzleMode SWIZZLE_MODE_Q = KTraits::SWIZZLE_MODE_Q;
+    [[maybe_unused]] constexpr SwizzleMode SWIZZLE_MODE_KV = KTraits::SWIZZLE_MODE_KV;
+    [[maybe_unused]] constexpr uint32_t CTA_TILE_Q = KTraits::CTA_TILE_Q;
+    [[maybe_unused]] constexpr uint32_t CTA_TILE_KV = KTraits::CTA_TILE_KV;
+    [[maybe_unused]] constexpr uint32_t KV_THR_LAYOUT_ROW = KTraits::KV_THR_LAYOUT_ROW;
+    [[maybe_unused]] constexpr uint32_t KV_THR_LAYOUT_COL = KTraits::KV_THR_LAYOUT_COL;
+    [[maybe_unused]] constexpr MaskMode MASK_MODE = KTraits::MASK_MODE;
+
     IdType* request_indices = params.request_indices;
     IdType* qo_tile_indices = params.qo_tile_indices;
     IdType* kv_tile_indices = params.kv_tile_indices;
@@ -1812,6 +1902,7 @@ __launch_bounds__(NUM_WARPS_Q* NUM_WARPS_KV* WARP_SIZE) void BatchPrefillWithPag
     const paged_kv_t<DTypeKV, IdType>& paged_kv = params.paged_kv;
     const bool partition_kv = params.partition_kv;
     const int32_t maybe_window_left = params.window_left;
+    const uint_fastdiv& group_size = params.group_size;
 
     static_assert(sizeof(DTypeQ) == 2);
     static_assert(sizeof(DTypeO) == 2);
@@ -2195,17 +2286,17 @@ gpuError_t BatchPrefillWithRaggedKVCacheDispatched(typename AttentionVariant::Pa
   return gpuSuccess;
 }
 
-template <uint32_t CTA_TILE_Q, uint32_t HEAD_DIM, PosEncodingMode POS_ENCODING_MODE,
-          bool ALLOW_FP16_QK_REDUCTION, MaskMode MASK_MODE, typename AttentionVariant>
-gpuError_t BatchPrefillWithPagedKVCacheDispatched(typename AttentionVariant::ParamsT params,
-                                                  typename AttentionVariant::DTypeO* tmp_v,
-                                                  float* tmp_s, gpuStream_t stream) {
-  using DTypeQ = typename AttentionVariant::DTypeQ;
-  using DTypeKV = typename AttentionVariant::DTypeKV;
+template <uint32_t CTA_TILE_Q, uint32_t HEAD_DIM_QK, uint32_t HEAD_DIM_VO,
+          PosEncodingMode POS_ENCODING_MODE, bool USE_FP16_QK_REDUCTION, MaskMode MASK_MODE,
+          typename AttentionVariant, typename Params>
+cudaError_t BatchPrefillWithPagedKVCacheDispatched(Params params, typename Params::DTypeO* tmp_v,
+                                                   float* tmp_s, cudaStream_t stream) {
+  using DTypeQ = typename Params::DTypeQ;
+  using DTypeKV = typename Params::DTypeKV;
+  using DTypeO = typename Params::DTypeO;
   const uint32_t padded_batch_size = params.padded_batch_size;
   const uint32_t num_qo_heads = params.num_qo_heads;
   const uint32_t num_kv_heads = params.paged_kv.num_heads;
-  const uint_fastdiv group_size_fastdiv(num_qo_heads / num_kv_heads);
   constexpr uint32_t NUM_MMA_Q = get_num_mma_q(CTA_TILE_Q);
   constexpr uint32_t NUM_WARPS_Q = get_num_warps_q(CTA_TILE_Q);
   constexpr uint32_t NUM_WARPS_KV = get_num_warps_kv(CTA_TILE_Q);
@@ -2219,57 +2310,56 @@ gpuError_t BatchPrefillWithPagedKVCacheDispatched(typename AttentionVariant::Par
   dim3 nblks(padded_batch_size, 1, num_kv_heads);
   dim3 nthrs(WARP_SIZE, NUM_WARPS_Q, NUM_WARPS_KV);
 
-  constexpr uint32_t NUM_MMA_D = HEAD_DIM / 16;
+  constexpr uint32_t NUM_MMA_D_QK = HEAD_DIM_QK / 16;
+  constexpr uint32_t NUM_MMA_D_VO = HEAD_DIM_VO / 16;
   using DTypeQKAccum =
-      typename std::conditional<ALLOW_FP16_QK_REDUCTION && std::is_same_v<DTypeQ, half>, half,
+      typename std::conditional<USE_FP16_QK_REDUCTION && std::is_same_v<DTypeQ, half>, half,
                                 float>::type;
 
   int dev_id = 0;
   FLASHINFER_CUDA_CALL(gpuGetDevice(&dev_id));
   int max_smem_per_sm = 0;
   FLASHINFER_CUDA_CALL(gpuDeviceGetAttribute(&max_smem_per_sm,
-                                             gpuDevAttrMaxSharedMemoryPerMultiprocessor, dev_id));
+                                              gpuDevAttrMaxSharedMemoryPerMultiprocessor, dev_id));
   // we expect each sm execute two threadblocks
   // TODO(Zihao): fix the following computation
-  const int num_ctas_per_sm = max_smem_per_sm > (16 * HEAD_DIM * sizeof(DTypeQ) * 16) ? 2 : 1;
+  const int num_ctas_per_sm = max_smem_per_sm > (16 * HEAD_DIM_QK * sizeof(DTypeQ) * 16) ? 2 : 1;
   const int max_smem_per_threadblock = max_smem_per_sm / num_ctas_per_sm;
 
   const uint32_t max_num_mma_kv_reg =
-      (HEAD_DIM >= 128 && NUM_MMA_Q == 2 && POS_ENCODING_MODE == PosEncodingMode::kRoPELlama &&
-       !ALLOW_FP16_QK_REDUCTION)
+      (HEAD_DIM_VO >= 128 && NUM_MMA_Q == 2 && POS_ENCODING_MODE == PosEncodingMode::kRoPELlama &&
+       !USE_FP16_QK_REDUCTION)
           ? 2
           : (8 / NUM_MMA_Q);
   // TODO(Zihao): fix the following computation
   const uint32_t max_num_mma_kv_smem =
-      (max_smem_per_threadblock / (16 * HEAD_DIM * sizeof(DTypeQ)) - NUM_MMA_Q * NUM_WARPS_Q) /
+      (max_smem_per_threadblock / (16 * HEAD_DIM_QK * sizeof(DTypeQ)) - NUM_MMA_Q * NUM_WARPS_Q) /
       (2 * NUM_WARPS_KV);
 
   DISPATCH_NUM_MMA_KV(min(max_num_mma_kv_smem, max_num_mma_kv_reg), NUM_MMA_KV, {
-    if constexpr (is_invalid_configuration<POS_ENCODING_MODE, DTypeKV, DTypeQKAccum>(
-                      NUM_MMA_Q, NUM_MMA_D, NUM_MMA_KV, NUM_WARPS_Q, NUM_WARPS_KV)) {
+    using KTraits =
+        KernelTraits<MASK_MODE, CTA_TILE_Q, NUM_MMA_Q, NUM_MMA_KV, NUM_MMA_D_QK, NUM_MMA_D_VO,
+                     NUM_WARPS_Q, NUM_WARPS_KV, POS_ENCODING_MODE, DTypeQ, DTypeKV, DTypeO,
+                     DTypeQKAccum, typename Params::IdType, AttentionVariant>;
+    if constexpr (KTraits::IsInvalid()) {
       // Invalid configuration, skip
       std::ostringstream err_msg;
       err_msg << "FlashInfer Internal Error: Invalid configuration : NUM_MMA_Q=" << NUM_MMA_Q
-              << " NUM_MMA_D=" << NUM_MMA_D << " NUM_MMA_KV=" << NUM_MMA_KV
-              << " NUM_WARPS_Q=" << NUM_WARPS_Q << " NUM_WARPS_KV=" << NUM_WARPS_KV
+              << " NUM_MMA_D_QK=" << NUM_MMA_D_QK << " NUM_MMA_D_VO=" << NUM_MMA_D_VO
+              << " NUM_MMA_KV=" << NUM_MMA_KV << " NUM_WARPS_Q=" << NUM_WARPS_Q
+              << " NUM_WARPS_KV=" << NUM_WARPS_KV
               << " please create an issue (https://github.com/flashinfer-ai/flashinfer/issues)"
                  " and report the issue to the developers.";
       FLASHINFER_ERROR(err_msg.str());
     } else {
-      // TODO(Zihao): fix the following computation
-      uint32_t smem_size = (NUM_MMA_Q * NUM_WARPS_Q * sizeof(DTypeQ) +
-                            NUM_MMA_KV * NUM_WARPS_KV * 2 * sizeof(DTypeQ)) *
-                           16 * HEAD_DIM;
-      auto kernel =
-          BatchPrefillWithPagedKVCacheKernel<MASK_MODE, POS_ENCODING_MODE, NUM_MMA_Q, NUM_MMA_D,
-                                             NUM_MMA_KV, NUM_WARPS_Q, NUM_WARPS_KV, DTypeQKAccum,
-                                             AttentionVariant>;
+      size_t smem_size = sizeof(typename KTraits::SharedStorage);
+      auto kernel = BatchPrefillWithPagedKVCacheKernel<KTraits, Params>;
       FLASHINFER_CUDA_CALL(
-          gpuFuncSetAttribute(reinterpret_cast<const void*>(kernel), gpuFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+          gpuFuncSetAttribute(kernel, gpuFuncAttributeMaxDynamicSharedMemorySize, smem_size));
       if (tmp_v == nullptr) {
         // do not partition kv
         params.partition_kv = false;
-        void* args[] = {(void*)&group_size_fastdiv, (void*)&params};
+        void* args[] = {(void*)&params};
         FLASHINFER_CUDA_CALL(
             gpuLaunchKernel((void*)kernel, nblks, nthrs, args, smem_size, stream));
       } else {
@@ -2278,20 +2368,19 @@ gpuError_t BatchPrefillWithPagedKVCacheDispatched(typename AttentionVariant::Par
         auto lse = params.lse;
         params.o = tmp_v;
         params.lse = tmp_s;
-        void* args[] = {(void*)&group_size_fastdiv, (void*)&params};
+        void* args[] = {(void*)&params};
         FLASHINFER_CUDA_CALL(
             gpuLaunchKernel((void*)kernel, nblks, nthrs, args, smem_size, stream));
         if constexpr (AttentionVariant::use_softmax) {
           FLASHINFER_CUDA_CALL(VariableLengthMergeStates(
               tmp_v, tmp_s, params.merge_indptr, o, lse, params.max_total_num_rows,
-              params.total_num_rows, num_qo_heads, HEAD_DIM, stream));
+              params.total_num_rows, num_qo_heads, HEAD_DIM_VO, stream));
         } else {
           FLASHINFER_CUDA_CALL(
               VariableLengthAttentionSum(tmp_v, params.merge_indptr, o, params.max_total_num_rows,
-                                         params.total_num_rows, num_qo_heads, HEAD_DIM, stream));
+                                         params.total_num_rows, num_qo_heads, HEAD_DIM_VO, stream));
         }
       }
-      gpuDeviceSynchronize();
     }
   });
   return gpuSuccess;
