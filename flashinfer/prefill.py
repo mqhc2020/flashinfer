@@ -683,7 +683,7 @@ def single_prefill_with_kv_cache(
     rope_scale: Optional[float] = None,
     rope_theta: Optional[float] = None,
     return_lse: bool = False,
-    backend: str = "auto",
+    backend: str = "fa2",
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Prefill/Append attention with KV cache for single request, return the attention
     output.
@@ -1007,7 +1007,7 @@ class BatchPrefillWithPagedKVCacheWrapper:
         paged_kv_last_page_len_buf: Optional[torch.Tensor] = None,
         custom_mask_buf: Optional[torch.Tensor] = None,
         mask_indptr_buf: Optional[torch.Tensor] = None,
-        backend: str = "auto",
+        backend: str = "fa2", #FIXME
         jit_args: Optional[List[Any]] = None,
     ) -> None:
         r"""Constructor of :class:`BatchPrefillWithPagedKVCacheWrapper`.
@@ -1417,7 +1417,6 @@ class BatchPrefillWithPagedKVCacheWrapper:
                 logits_soft_cap > 0,  # use_logits_soft_cap
                 use_fp16_qk_reduction,
             )
-
             self._cached_module = get_batch_prefill_module(self._backend)(
                 *get_module_args
             )
@@ -1829,8 +1828,9 @@ class BatchPrefillWithRaggedKVCacheWrapper:
         kv_indptr_buf: Optional[torch.Tensor] = None,
         custom_mask_buf: Optional[torch.Tensor] = None,
         mask_indptr_buf: Optional[torch.Tensor] = None,
-        backend: str = "auto",
+        backend: str = "fa2", #FIXME
         jit_args: Optional[List[Any]] = None,
+
     ) -> None:
         r"""Constructor of :class:`BatchPrefillWithRaggedKVCacheWrapper`.
 

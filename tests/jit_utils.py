@@ -46,21 +46,21 @@ def jit_decode_attention_func_args(
         use_sliding_window_options,
         use_logits_soft_cap_options,
     ):
-        load_module_func_args.append(
-            (
-                flashinfer.decode.get_single_decode_module,
-                (
-                    q_dtype,
-                    kv_dtype,
-                    q_dtype,
-                    head_dim,  # head_dim_qk
-                    head_dim,  # head_dim_vo
-                    pos_encoding_mode,
-                    use_sliding_window,
-                    use_logits_soft_cap,
-                ),
-            )
-        )
+#        load_module_func_args.append(
+#            (
+#                flashinfer.decode.get_single_decode_module,
+#                (
+#                    q_dtype,
+#                    kv_dtype,
+#                    q_dtype,
+#                    head_dim,  # head_dim_qk
+#                    head_dim,  # head_dim_vo
+#                    pos_encoding_mode,
+#                    use_sliding_window,
+#                    use_logits_soft_cap,
+#                ),
+#            )
+#        )
         load_module_func_args.append(
             (
                 flashinfer.decode.get_batch_decode_module,
@@ -109,23 +109,23 @@ def jit_prefill_attention_func_args(
         use_logits_soft_cap_options,
         use_fp16_qk_reduction_options,
     ):
-        load_module_func_args.append(
-            (
-                flashinfer.prefill.gen_single_prefill_module,
-                (
-                    "fa2",
-                    q_dtype,
-                    kv_dtype,
-                    q_dtype,
-                    head_dim,  # head_dim_qk
-                    head_dim,  # head_dim_vo
-                    pos_encoding_mode,
-                    use_sliding_window,
-                    use_logits_soft_cap,
-                    use_fp16_qk_reduction,
-                ),
-            )
-        )
+#        load_module_func_args.append(
+#            (
+#                flashinfer.prefill.gen_single_prefill_module,
+#                (
+#                    "fa2",
+#                    q_dtype,
+#                    kv_dtype,
+#                    q_dtype,
+#                    head_dim,  # head_dim_qk
+#                    head_dim,  # head_dim_vo
+#                    pos_encoding_mode,
+#                    use_sliding_window,
+#                    use_logits_soft_cap,
+#                    use_fp16_qk_reduction,
+#                ),
+#            )
+#        )
         load_module_func_args.append(
             (
                 flashinfer.prefill.gen_batch_prefill_module,

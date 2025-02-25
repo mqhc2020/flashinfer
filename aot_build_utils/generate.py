@@ -33,6 +33,7 @@ def get_instantiation_cu(args: argparse.Namespace) -> List[str]:
     def write_if_different(path: Path, content: str) -> None:
         if path.exists() and path.read_text() == content:
             return
+        print(f"Writing: {str(path)}")
         path.write_text(content)
 
     path: Path = args.path
@@ -251,11 +252,12 @@ def get_instantiation_cu(args: argparse.Namespace) -> List[str]:
                         )
 
     return (
-        single_decode_uris
-        + batch_decode_uris
-        + single_prefill_uris
+#        single_decode_uris
+        batch_decode_uris
+#        + single_prefill_uris
         + batch_prefill_uris
     )
+#    return batch_decode_uris
 
 
 if __name__ == "__main__":

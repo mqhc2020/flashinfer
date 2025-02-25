@@ -31,22 +31,24 @@ def get_cu_file_str(
     idtype,
 ):
     content = """#include <flashinfer/attention_impl.cuh>
+#include <flashinfer/gpu_defines_cuda_hip.h>
 
 namespace flashinfer {{
 
 using Params = BatchDecodeParams<{dtype_q}, {dtype_kv}, {dtype_out}, {idtype}>;
 
-template cudaError_t BatchDecodeWithPagedKVCacheDispatched<{head_dim_qk}, {pos_encoding_mode}, DefaultAttention<
+template gpuError_t BatchDecodeWithPagedKVCacheDispatched<{head_dim_qk}, {pos_encoding_mode}, DefaultAttention<
     /*use_custom_mask=*/false, /*use_sliding_window=*/false, /*use_logits_soft_cap=*/false, /*use_alibi_bias=*/false>, Params>(
     Params params,
-    {dtype_out}* tmp_v, float* tmp_s,
-    cudaStream_t stream);
 
-template cudaError_t BatchDecodeWithPagedKVCacheDispatched<{head_dim_qk}, {pos_encoding_mode}, DefaultAttention<
+    {dtype_out}* tmp_v, float* tmp_s,
+    gpuStream_t stream);
+
+template gpuError_t BatchDecodeWithPagedKVCacheDispatched<{head_dim_qk}, {pos_encoding_mode}, DefaultAttention<
     /*use_custom_mask=*/false, /*use_sliding_window=*/true, /*use_logits_soft_cap=*/false, /*use_alibi_bias=*/false>, Params>(
     Params params,
     {dtype_out}* tmp_v, float* tmp_s,
-    cudaStream_t stream);
+    gpuStream_t stream);
 
 template cudaError_t BatchDecodeWithPagedKVCacheDispatched<{head_dim_qk}, {pos_encoding_mode}, DefaultAttention<
     /*use_custom_mask=*/false, /*use_sliding_window=*/false, /*use_logits_soft_cap=*/true, /*use_alibi_bias=*/false>, Params>(
@@ -62,11 +64,11 @@ template cudaError_t BatchDecodeWithPagedKVCacheDispatched<{head_dim_qk}, {pos_e
 
 using ParamsMlaT = BatchDecodeParamsMLA<{dtype_q}, {dtype_kv}, {dtype_out}, {idtype}>;
 
-template cudaError_t BatchDecodeWithPagedKVCacheDispatchedMLA<{head_dim}, {head_dim_kpe}, DefaultAttention<
+template gpuError_t BatchDecodeWithPagedKVCacheDispatchedMLA<{head_dim}, {head_dim_kpe}, DefaultAttention<
     /*use_custom_mask=*/false, /*use_sliding_window=*/false, /*use_logits_soft_cap=*/false, /*use_alibi_bias=*/false>, ParamsMlaT>(
     ParamsMlaT params,
     {dtype_out}* tmp_v, float* tmp_s,
-    cudaStream_t stream);
+    gpuStream_t stream);
 
 }}
     """.format(

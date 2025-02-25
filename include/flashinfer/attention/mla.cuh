@@ -36,6 +36,22 @@ struct StandardAttention : AttentionVariantBase {
                                         uint8_t* smem_ptr) {
     sm_scale_log2 = params.sm_scale * math::log2e;
   }
+
+  template <typename T>
+  __device__ __forceinline__ float T2float(T q) {
+    if constexpr(std::is_same<T, __half>::value)
+	    return __half2float(q);
+    else
+	    return float(q);
+  }
+
+  template <typename T>
+  __device__ __forceinline__ T float2T(float q) {
+    if constexpr(std::is_same<T, __half>::value)
+	    return __float2half(q);
+    else
+	    return float(q);
+  }
 };
 
 template <uint32_t NUM_STAGES, uint32_t CTA_TILE_Q, uint32_t CTA_TILE_KV, uint32_t HEAD_DIM_CKV,

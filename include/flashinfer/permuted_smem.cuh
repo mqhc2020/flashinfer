@@ -16,11 +16,17 @@
 #ifndef FLASHINFER_PERMUTED_SMEM_CUH_
 #define FLASHINFER_PERMUTED_SMEM_CUH_
 
+#if defined(__HIPCC__) || (defined(__clang__) && defined(__HIP__)) || defined(__HIPCC_RTC__)
+#include <hip/hip_bf16.h>
+#include <hip/hip_fp16.h>
+#include <hip/hip_runtime.h>
+#elif defined(__CUDACC__) || defined(__NVCC__) || (defined(__clang__) && defined(__CUDA__)) || defined(__CUDACC_RTC__)
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
 #include <cuda/pipeline>
+#endif
 
 #include "cp_async.cuh"
 #include "mma.cuh"
@@ -67,10 +73,22 @@ struct smem_t {
       return i * stride + (j ^ (i % 8));
     } else {
       // swizzle_mode == SwizzleMode::k64B
-      static_assert(stride == 4);
+      //static_assert(stride == 4);
       return i * stride + (j ^ ((i / 2) % 4));
     }
   }
+
+  static __device__ __forceinline__ uint32_t get_permuted_offset(uint32_t i, uint32_t j, uint32_t stride) {
+    if constexpr (swizzle_mode == SwizzleMode::k128B) {
+      return i * stride + (j ^ (i % 8));
+    } else {
+      // swizzle_mode == SwizzleMode::k64B
+      //static_assert(stride == 4);
+      return i * stride + (j ^ ((i / 2) % 4));
+    }
+  }
+
+
 
   template <uint32_t step_size>
   static __device__ __forceinline__ uint32_t advance_offset_by_column(uint32_t offset,
