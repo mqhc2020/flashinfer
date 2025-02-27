@@ -267,7 +267,8 @@ if enable_aot:
     ]
     if check_hip_availability():
         # FIXME
-        cxx_flags += ["-I/opt/rocm/include", "-D__HIP_PLATFORM_AMD__"]
+        cxx_flags += ["-I/opt/rocm/include", "-I/opt/rocm/include/hip", "-D__HIP_PLATFORM_AMD__"]
+        #cxx_flags += ["-I/opt/rocm/include", "-D__HIP_PLATFORM_AMD__"]
     else:
         cxx_flags += ["-Wno-switch-bool"]
 
@@ -292,6 +293,7 @@ if enable_aot:
         "--offload-arch=gfx942",
         "-ffast-math",
         "-I/opt/rocm/include",
+        "-I/opt/rocm/include/hip",
         "-L/opt/rocm/lib",
         "-lamdhip64",
         "-D__HIP_PLATFORM_AMD__",
