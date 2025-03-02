@@ -281,10 +281,14 @@ if enable_aot:
         "-use_fast_math",
         "-DPy_LIMITED_API=0x03080000",
     ]
-    libraries = [
-        "cublas",
-        "cublasLt",
-    ]
+    if check_hip_availability():
+        libraries = []
+    else:
+        libraries = [
+            "cublas",
+            "cublasLt",
+        ]
+
     sm90a_flags = "-gencode arch=compute_90a,code=sm_90a".split()
     # FIXME: ROCm/HIP compiler flags
     hipcc_flags = [

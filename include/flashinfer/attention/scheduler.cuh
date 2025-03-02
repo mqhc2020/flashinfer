@@ -37,7 +37,7 @@
 #include "../exception.h"
 #include "../pos_enc.cuh"
 #include "../utils.cuh"
-#include "./heap.h"
+#include "heap.h"
 
 namespace flashinfer {
 
@@ -45,7 +45,7 @@ template <PosEncodingMode POS_ENCODING_MODE, uint32_t num_stages_smem, uint32_t 
           uint32_t vec_size, uint32_t bdx, uint32_t bdy, uint32_t bdz, typename AttentionVariant,
           typename Params>
 #if defined(__HIPCC__) || (defined(__clang__) && defined(__HIP__)) || defined(__HIPCC_RTC__)
-__global__ void BatchDecodeWithPagedKVCacheKernel(const typename AttentionVariant::ParamsT params);
+__global__ void BatchDecodeWithPagedKVCacheKernel(const Params params);
 #else
 __global__ void BatchDecodeWithPagedKVCacheKernel(const __grid_constant__ Params params);
 #endif

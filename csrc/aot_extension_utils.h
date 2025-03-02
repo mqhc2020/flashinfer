@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "generated/dispatch.inc"
-#include "pytorch_extension_utils.h"
+#include "pytorch_extension_utils_hip.h"
 
 #define DISPATCH_head_dim(expr, const_expr, ...) \
   _DISPATCH_SWITCH("head_dim", expr, _DISPATCH_CASES_head_dim(const_expr, __VA_ARGS__))
