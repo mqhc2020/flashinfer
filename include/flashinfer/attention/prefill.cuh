@@ -742,12 +742,8 @@ __device__ __forceinline__ void compute_qk(
         }
         b_frag_f8[0] = frag_layout_swizzle_16b_to_8b(b_frag_f8[0]);
         b_frag_f8[1] = frag_layout_swizzle_16b_to_8b(b_frag_f8[1]);
-        //vec_cast<typename KTraits::DTypeQ, typename KTraits::DTypeKV>::cast<8>(
-        //    (typename KTraits::DTypeQ*)b_frag, (typename KTraits::DTypeKV*)b_frag_f8);
-        if constexpr(std::is_same<typename KTraits::DTypeQ, __half>::value)
-          if constexpr(std::is_same<typename KTraits::DTypeKV, __half>::value)
-            vec_cast<__half, __half>::cast<8>(
-              (typename KTraits::DTypeQ*)b_frag, (typename KTraits::DTypeKV*)b_frag_f8);
+        vec_cast<typename KTraits::DTypeQ, typename KTraits::DTypeKV>::template cast<8>(
+            (typename KTraits::DTypeQ*)&b_frag, (typename KTraits::DTypeKV*)b_frag_f8);
       } else {
 #if 0  // disable MMA on ROCm platform
         k_smem->ldmatrix_m8n8x4(*k_smem_offset_r, b_frag);
