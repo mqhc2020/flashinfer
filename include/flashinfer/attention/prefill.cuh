@@ -1362,7 +1362,7 @@ __device__ __forceinline__ void write_o_reg_gmem(
                        8 * UPCAST_STRIDE_O))[lane_idx % 4] = o_frag_f16[3];
 #endif
         }
-      }x
+      }
 #endif //TODO
       uint32_t o_smem_offset_w = o_smem->template get_permuted_offset<UPCAST_STRIDE_O>(
           warp_idx_x * KTraits::NUM_MMA_Q * 16 + lane_idx / 8, lane_idx % 8);
