@@ -1007,12 +1007,8 @@ __device__ __forceinline__ void compute_sfm_v(
     for (uint32_t mma_q = 0; mma_q < KTraits::NUM_MMA_Q; ++mma_q) {
 #pragma unroll
       for (uint32_t mma_kv = 0; mma_kv < KTraits::NUM_MMA_KV; ++mma_kv) {
-//        vec_cast<typename KTraits::DTypeQ, float>::cast<8>(s_frag_f16[mma_q][mma_kv],
-//                                                           s_frag[mma_q][mma_kv]);
-//hipFIXED
-        if constexpr(std::is_same<typename KTraits::DTypeQ, __half>::value)
-          vec_cast<typename KTraits::DTypeQ, float>::template cast<4>(s_frag_f16[mma_q][mma_kv],
-                                                  s_frag[mma_q][mma_kv]);
+        vec_cast<typename KTraits::DTypeQ, float>::template cast<4>(s_frag_f16[mma_q][mma_kv], 
+                                                                    s_frag[mma_q][mma_kv]);
       }
     }
   }
@@ -1051,7 +1047,6 @@ __device__ __forceinline__ void compute_sfm_v(
   for (uint32_t mma_kv = 0; mma_kv < KTraits::NUM_MMA_KV; ++mma_kv) {
 #pragma unroll
     for (uint32_t mma_d = 0; mma_d < KTraits::NUM_MMA_D_VO; ++mma_d) {
-      //uint32_t b_frag[4];
       ab_frag_type b_frag;
       if constexpr (sizeof(typename KTraits::DTypeKV) == 1) {
         uint32_t b_frag_f8[2];
@@ -1066,11 +1061,8 @@ __device__ __forceinline__ void compute_sfm_v(
         }
         b_frag_f8[0] = frag_layout_swizzle_16b_to_8b_trans(b_frag_f8[0]);
         b_frag_f8[1] = frag_layout_swizzle_16b_to_8b_trans(b_frag_f8[1]);
-        //vec_cast<typename KTraits::DTypeQ, typename KTraits::DTypeKV>::cast<8>(
-        //    (typename KTraits::DTypeQ*)b_frag, (typename KTraits::DTypeKV*)b_frag_f8);
-        if constexpr(std::is_same<typename KTraits::DTypeQ, __half>::value)
-          if constexpr(std::is_same<typename KTraits::DTypeKV, __half>::value)
-            vec_cast<__half, __half>::cast<8>((typename KTraits::DTypeQ*)b_frag, (typename KTraits::DTypeKV*)b_frag_f8);
+        vec_cast<typename KTraits::DTypeQ, typename KTraits::DTypeKV>::template cast<8>(
+            (typename KTraits::DTypeQ*)&b_frag, (typename KTraits::DTypeKV*)b_frag_f8);
         swap(reinterpret_cast<uint32_t*>(&b_frag)[1], reinterpret_cast<uint32_t*>(&b_frag)[2]);
       } else {
 #if 0  // disable MMA on ROCm platform
