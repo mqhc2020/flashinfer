@@ -693,12 +693,11 @@ __device__ __forceinline__ void k_smem_inplace_apply_rotary(
   }
 }
 
-//FIXME_M
 template <typename KTraits>
 __device__ __forceinline__ void compute_qk(
-  smem_t<KTraits::SWIZZLE_MODE_Q>* q_smem, uint32_t* q_smem_offset_r,
-  smem_t<KTraits::SWIZZLE_MODE_KV>* k_smem, uint32_t* k_smem_offset_r,
-  typename KTraits::DTypeQKAccum (*s_frag)[KTraits::NUM_MMA_KV][4]) {
+    smem_t<KTraits::SWIZZLE_MODE_Q>* q_smem, uint32_t* q_smem_offset_r,
+    smem_t<KTraits::SWIZZLE_MODE_KV>* k_smem, uint32_t* k_smem_offset_r,
+    typename KTraits::DTypeQKAccum (*s_frag)[KTraits::NUM_MMA_KV][4]) {
   constexpr uint32_t UPCAST_STRIDE_Q = KTraits::UPCAST_STRIDE_Q;
   constexpr uint32_t UPCAST_STRIDE_K = KTraits::UPCAST_STRIDE_K;
 
@@ -707,7 +706,6 @@ __device__ __forceinline__ void compute_qk(
   using c_frag_type = typename mfma_m16n16k16_f32<typename KTraits::DTypeQ>::c_fragment_type;
   ab_frag_type a_frag[KTraits::NUM_MMA_Q];
   ab_frag_type b_frag;
-  c_frag_type s_frag_compute[KTraits::NUM_MMA_Q][KTraits::NUM_MMA_KV];
 
   // compute q*k^T
 #pragma unroll
@@ -771,14 +769,16 @@ __device__ __forceinline__ void compute_qk(
             mma::mma_sync_m16n16k16_row_col_f16f16f32<typename KTraits::DTypeQ, MMAMode::kInit>(
                 s_frag[mma_q][mma_kv], a_frag[mma_q], b_frag);
 #else
-            s_frag_compute[mma_q][mma_kv] = mfma_m16n16k16_f32<typename KTraits::DTypeQ>::run(b_frag, a_frag[mma_q], c_frag_type{});
+            *(c_frag_type*)s_frag[mma_q][mma_kv] = mfma_m16n16k16_f32<typename KTraits::DTypeQ>::run(
+              b_frag, a_frag[mma_q], c_frag_type{});
 #endif // disable MMA on ROCm platform
           } else {
 #if 0  // disable MMA on ROCm platform
             mma::mma_sync_m16n16k16_row_col_f16f16f32<typename KTraits::DTypeQ>(
                 s_frag[mma_q][mma_kv], a_frag[mma_q], b_frag);
 #else
-            s_frag_compute[mma_q][mma_kv] = mfma_m16n16k16_f32<typename KTraits::DTypeQ>::run(b_frag, a_frag[mma_q], s_frag_compute[mma_q][mma_kv]);
+            *(c_frag_type*)s_frag[mma_q][mma_kv] = mfma_m16n16k16_f32<typename KTraits::DTypeQ>::run(
+              b_frag, a_frag[mma_q], *(c_frag_type*)s_frag[mma_q][mma_kv]);
 #endif // disable MMA on ROCm platform
           }
         } else if (std::is_same_v<typename KTraits::DTypeQKAccum, half>) {
@@ -807,17 +807,6 @@ __device__ __forceinline__ void compute_qk(
                          KTraits::NUM_MMA_KV * 16 * UPCAST_STRIDE_K;
     }
   }
-
-  if constexpr (sizeof(**s_frag_compute) == sizeof(**s_frag)) {
-    #pragma unroll
-    for (uint32_t mma_q = 0; mma_q < KTraits::NUM_MMA_Q; ++mma_q) {
-      #pragma unroll
-      for (uint32_t mma_kv = 0; mma_kv < KTraits::NUM_MMA_KV; ++mma_kv) {
-        memcpy(&s_frag[mma_q][mma_kv], &s_frag_compute[mma_q][mma_kv], sizeof(**s_frag));
-      }
-    }
-  }
-
   *q_smem_offset_r -= KTraits::NUM_MMA_D_QK * 2;
   *k_smem_offset_r -= KTraits::NUM_MMA_D_QK * sizeof(typename KTraits::DTypeKV);
 }
