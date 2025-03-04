@@ -856,8 +856,8 @@ __device__ __forceinline__ void logits_mask(
   uint32_t q[NUM_MMA_Q], r[NUM_MMA_Q];
 #pragma unroll
   for (uint32_t mma_q = 0; mma_q < NUM_MMA_Q; ++mma_q) {
-    group_size.divmod(qo_packed_idx_base + mma_q * 16 + real_lane_idx % 16, q[mma_q],
-      r[mma_q]);
+    group_size.divmod(qo_packed_idx_base + mma_q * 16 + real_lane_idx % 16,
+                      q[mma_q], r[mma_q]);
   }
 
 #pragma unroll
