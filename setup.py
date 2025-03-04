@@ -75,7 +75,6 @@ def generate_build_meta(aot_build_meta: dict) -> None:
 
 
 def generate_cuda() -> None:
-    print("Calling generate_cuda()")
     try:  # no aot_build_utils in sdist
         sys.path.append(str(root))
         from aot_build_utils import generate_dispatch_inc
@@ -205,7 +204,7 @@ if enable_aot:
     # install_requires = [f"torch == {torch_version}+rocm{str(torch_cpp_ext.ROCM_VERSION[0])}.{str(torch_cpp_ext.ROCM_VERSION[1])}"] if check_hip_availability() else [f"torch == {torch_version}"]
     # Workaround for missed PyTorch for ROCm in FlashInfer's Wheel hub https://flashinfer.ai/whl/,
     # where there are only PyTorch versions for CUDA platform.
-    install_requires = [] if check_hip_availability() else [f"torch == {torch_version}"]
+    install_requires = [] if check_hip_availability() else [f"torch == {torch_version}.*"]
 
     aot_build_meta = {}
     aot_build_meta["cuda_major"] = cuda_version.major
@@ -282,7 +281,10 @@ if enable_aot:
         "-DPy_LIMITED_API=0x03080000",
     ]
     if check_hip_availability():
-        libraries = []
+        libraries = [
+            "hipblaslt",
+            "rocblas",
+        ]
     else:
         libraries = [
             "cublas",
@@ -301,6 +303,7 @@ if enable_aot:
         "-L/opt/rocm/lib",
         "-lamdhip64",
         "-D__HIP_PLATFORM_AMD__",
+        "-DPy_LIMITED_API=0x03080000",
     ]
     kernel_sources = [
         "csrc/bmm_fp8.cu",

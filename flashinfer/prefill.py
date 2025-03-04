@@ -1830,7 +1830,6 @@ class BatchPrefillWithRaggedKVCacheWrapper:
         mask_indptr_buf: Optional[torch.Tensor] = None,
         backend: str = "fa2", #FIXME
         jit_args: Optional[List[Any]] = None,
-
     ) -> None:
         r"""Constructor of :class:`BatchPrefillWithRaggedKVCacheWrapper`.
 
