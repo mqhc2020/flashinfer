@@ -981,13 +981,10 @@ __device__ __forceinline__ void update_mdo_states(
           half2 m2 = make_half2(m[mma_q][j], m[mma_q][j]);
 #pragma unroll
           for (uint32_t mma_kv = 0; mma_kv < KTraits::NUM_MMA_KV; ++mma_kv) {
-//FIXME
-#if 0  // disable PTX exp2() on ROCm platform
             *(half2*)&s_frag[mma_q][mma_kv][j * 2] =
                 math::ptx_exp2(*(half2*)&s_frag[mma_q][mma_kv][j * 2] * sm_scale - m2 * sm_scale);
             *(half2*)&s_frag[mma_q][mma_kv][j * 2 + 4] = math::ptx_exp2(
                 *(half2*)&s_frag[mma_q][mma_kv][j * 2 + 4] * sm_scale - m2 * sm_scale);
-#endif // disable PTX exp2() on ROCm platform
           }
         }
       }
