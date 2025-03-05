@@ -218,18 +218,23 @@ TORCH_LIBRARY_FRAGMENT(TORCH_EXTENSION_NAME, m) {
   m.def("merge_states", merge_states);
 
   // decode
+#if 0 //FIXME: need further hipify
   // "Single-request decode with KV-Cache operator"
   m.def("single_decode_with_kv_cache", single_decode_with_kv_cache);
   m.def("batch_decode_with_paged_kv_cache_plan", BatchDecodeWithPagedKVCachePlan);
   m.def("batch_decode_with_paged_kv_cache_run", BatchDecodeWithPagedKVCacheRun);
+#endif
 
   // gemm
+#if 0 //FIXME: need further hipify
   // BMM FP8
   m.def("bmm_fp8", bmm_fp8);
   // Cutlass Segment GEMM operator
   m.def("cutlass_segment_gemm", CutlassSegmentGEMM);
+#endif
 
   // norm
+#if 0 //FIXME: need further hipify
   // Root mean square normalization
   m.def("rmsnorm", rmsnorm);
   // Fused add root mean square normalization
@@ -238,20 +243,25 @@ TORCH_LIBRARY_FRAGMENT(TORCH_EXTENSION_NAME, m) {
   m.def("gemma_rmsnorm", gemma_rmsnorm);
   // Gemma Fused add root mean square normalization
   m.def("gemma_fused_add_rmsnorm", gemma_fused_add_rmsnorm);
+#endif
 
   // page
+#if 0
   // Append paged KV-Cache operator
   m.def("append_paged_kv_cache", append_paged_kv_cache);
   // Precompute block sparse offsets
   m.def("block_sparse_indices_to_vector_sparse_offsets",
         block_sparse_indices_to_vector_sparse_offsets);
+#endif
 
+#if 0 //FIXME: need further hipify
   // prefill
   // Single-request prefill attention with KV-Cache operator
   m.def("single_prefill_with_kv_cache", single_prefill_with_kv_cache);
   m.def("batch_prefill_with_kv_cache_plan", BatchPrefillWithKVCachePlan);
   m.def("batch_prefill_with_ragged_kv_cache_run", BatchPrefillWithRaggedKVCacheRun);
   m.def("batch_prefill_with_paged_kv_cache_run", BatchPrefillWithPagedKVCacheRun);
+#endif
 
   // quantization
   // GPU packbits operator
@@ -260,6 +270,7 @@ TORCH_LIBRARY_FRAGMENT(TORCH_EXTENSION_NAME, m) {
   m.def("segment_packbits", segment_packbits);
 
   // rope
+#if 0 //FIXME: need further hipify
   // "Apply RoPE"
   m.def("apply_rope", apply_rope);
   // "Apply Llama 3.1 style RoPE"
@@ -270,7 +281,9 @@ TORCH_LIBRARY_FRAGMENT(TORCH_EXTENSION_NAME, m) {
   m.def("apply_llama31_rope_pos_ids", apply_llama31_rope_pos_ids);
   // "Apply RoPE with positional ids and cosine/sine cache"
   m.def("apply_rope_pos_ids_cos_sin_cache", apply_rope_pos_ids_cos_sin_cache);
+#endif
 
+#if 0//FIXME: need further hipify
   // sampling
   // Sample from probabilities
   m.def("sampling_from_probs", sampling_from_probs);
@@ -290,4 +303,5 @@ TORCH_LIBRARY_FRAGMENT(TORCH_EXTENSION_NAME, m) {
   m.def("top_k_mask_logits", top_k_mask_logits);
   // Speculative sampling from sequence of probabilities
   m.def("chain_speculative_sampling", chain_speculative_sampling);
+#endif
 }

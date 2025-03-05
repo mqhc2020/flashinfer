@@ -83,7 +83,7 @@ def generate_cuda() -> None:
             get_aot_default_additional_params_header_str,
         )
         from aot_build_utils.generate_sm90 import get_sm90_instantiation_cu
-    except ImportError:
+    except ImportError as e:
         print("Import failed in the function generate_cuda(): ", e)
         return
 
@@ -129,6 +129,7 @@ def generate_cuda() -> None:
                 enable_bf16=enable_bf16,
             )
         )
+
     aot_config_str = f"""prebuilt_ops_uri = set({aot_kernel_uris})"""
     write_if_different(root / "flashinfer" / "jit" / "aot_config.py", aot_config_str)
     write_if_different(
@@ -301,27 +302,48 @@ if enable_aot:
         "-I/opt/rocm/include",
         "-I/opt/rocm/include/hip",
         "-L/opt/rocm/lib",
+        "-L/usr/local/lib/python3.12/dist-packages/torch/lib/", #FIXME
         "-lamdhip64",
         "-D__HIP_PLATFORM_AMD__",
         "-DPy_LIMITED_API=0x03080000",
     ]
-    kernel_sources = [
-        "csrc/bmm_fp8.cu",
-        "csrc/cascade.cu",
-        "csrc/group_gemm.cu",
-        "csrc/norm.cu",
-        "csrc/page.cu",
-        "csrc/quantization.cu",
-        "csrc/rope.cu",
-        "csrc/sampling.cu",
-        "csrc/renorm.cu",
-        "csrc/activation.cu",
-        "csrc/batch_decode.cu",
-        "csrc/batch_prefill.cu",
-        "csrc/single_decode.cu",
-        "csrc/single_prefill.cu",
-        "csrc/flashinfer_ops.cu",
-    ]
+    if check_hip_availability():
+        kernel_sources = [
+#            "csrc/bmm_fp8.cu",
+            "csrc/cascade.cu",
+#            "csrc/group_gemm.cu",
+#            "csrc/norm.cu",
+#            "csrc/page.cu",
+            "csrc/quantization.cu",
+#            "csrc/rope.cu",
+#            "csrc/sampling.cu",
+#            "csrc/renorm.cu",
+            "csrc/activation.cu",
+#            "csrc/batch_decode.cu",
+            "csrc/batch_prefill.cu",
+#            "csrc/single_decode.cu",
+#            "csrc/single_prefill.cu",
+            "csrc/flashinfer_ops.cu",
+        ]
+    else:
+        kernel_sources = [
+            "csrc/bmm_fp8.cu",
+            "csrc/cascade.cu",
+            "csrc/group_gemm.cu",
+            "csrc/norm.cu",
+            "csrc/page.cu",
+            "csrc/quantization.cu",
+            "csrc/rope.cu",
+            "csrc/sampling.cu",
+            "csrc/renorm.cu",
+            "csrc/activation.cu",
+            "csrc/batch_decode.cu",
+            "csrc/batch_prefill.cu",
+            "csrc/single_decode.cu",
+            "csrc/single_prefill.cu",
+            "csrc/flashinfer_ops.cu",
+        ]
+
     kernel_sm90_sources = [
         "csrc/group_gemm_sm90.cu",
         "csrc/single_prefill_sm90.cu",
@@ -337,8 +359,7 @@ if enable_aot:
     ext_modules = [
         torch_cpp_ext.CUDAExtension(
             name="flashinfer.flashinfer_kernels",
-            # sources=kernel_sources + decode_sources + prefill_sources,
-            sources=["csrc/batch_decode.cu", "csrc/batch_prefill.cu"] + decode_sources + prefill_sources,
+            sources=kernel_sources + decode_sources + prefill_sources,
             include_dirs=include_dirs,
             libraries=libraries,
             extra_compile_args={

@@ -137,7 +137,7 @@ def load_cuda_ops(
         "-DFLASHINFER_ENABLE_F16",
         "-DFLASHINFER_ENABLE_BF16",
         "-DFLASHINFER_ENABLE_FP8_E4M3",
-        "-DFLASHINFER_ENABLE_FP8_E4M3",
+        "-DFLASHINFER_ENABLE_FP8_E5M2",
     ]
     with_cuda = True
     if check_hip_availability():
@@ -145,8 +145,17 @@ def load_cuda_ops(
         with_cuda = None
         # cflags += ["-x", "hip"]
         # FIXME
-        cflags += ["-I/opt/rocm/include", "-D__HIP_PLATFORM_AMD__"]
-        cuda_cflags += ["--offload-arch=gfx942", "-ffast-math", "-I/opt/rocm/include", "-L/opt/rocm/lib", "-lamdhip64", "-D__HIP_PLATFORM_AMD__"]
+        cflags += ["-I/opt/rocm/include", "-I/opt/rocm/include/hip", "-ltorch", "-D__HIP_PLATFORM_AMD__"]
+        cuda_cflags += [
+            "--offload-arch=gfx942",
+            "-ffast-math",
+            "-I/opt/rocm/include",
+            "-I/opt/rocm/include/hip",
+            "-L/usr/local/lib/python3.12/dist-packages/torch/lib/",
+            "-L/opt/rocm/lib",
+            "-ltorch",
+            "-lamdhip64",
+            "-D__HIP_PLATFORM_AMD__"]
     else:
         print("Setting extra flags for CUDA")
         cflags += ["-Wno-switch-bool"]
