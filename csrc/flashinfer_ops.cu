@@ -246,7 +246,7 @@ TORCH_LIBRARY_FRAGMENT(TORCH_EXTENSION_NAME, m) {
 #endif
 
   // page
-#if 0
+#if 0 //FIXME: need further hipify
   // Append paged KV-Cache operator
   m.def("append_paged_kv_cache", append_paged_kv_cache);
   // Precompute block sparse offsets
@@ -254,14 +254,14 @@ TORCH_LIBRARY_FRAGMENT(TORCH_EXTENSION_NAME, m) {
         block_sparse_indices_to_vector_sparse_offsets);
 #endif
 
-#if 0 //FIXME: need further hipify
   // prefill
   // Single-request prefill attention with KV-Cache operator
+  #if 0 //FIXME: need further hipify
   m.def("single_prefill_with_kv_cache", single_prefill_with_kv_cache);
+  #endif
   m.def("batch_prefill_with_kv_cache_plan", BatchPrefillWithKVCachePlan);
   m.def("batch_prefill_with_ragged_kv_cache_run", BatchPrefillWithRaggedKVCacheRun);
   m.def("batch_prefill_with_paged_kv_cache_run", BatchPrefillWithPagedKVCacheRun);
-#endif
 
   // quantization
   // GPU packbits operator

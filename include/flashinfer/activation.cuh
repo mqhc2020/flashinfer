@@ -21,6 +21,22 @@
 #include "utils.cuh"
 #include "vec_dtypes.cuh"
 
+template <typename T>
+__device__ __forceinline__ __half T2half(T q) {
+  if constexpr(std::is_same<T, float>::value)
+    return __float2half(q);
+  else
+    return __float2half(__bfloat162float(q));
+}
+
+template <typename T>
+__device__ __forceinline__ T half2T(__half q) {
+  if constexpr(std::is_same<T, float>::value)
+    return __half2float(q);
+  else
+    return __float2bfloat16(__half2float(q));
+}
+
 namespace flashinfer {
 
 namespace activation {
@@ -49,9 +65,16 @@ __global__ void act_and_mul_kernel(T* __restrict__ out, const T* __restrict__ in
   // process the remaining elements
 #pragma unroll 1
   for (int64_t idx = thread_idx; idx < d % (stride * vec_size); idx += stride) {
+#if defined(__HIPCC__) || (defined(__clang__) && defined(__HIP__)) || defined(__HIPCC_RTC__)
+//FIXME
+//    float x = half2T<T>(input[offset + remaining_offset + idx]),
+//          y = half2T<T>(input[offset + remaining_offset + d + idx]);
+//    out[token_idx * d + remaining_offset + idx] = T2half<T>(Activation(x) * y);
+#else
     float x = input[offset + remaining_offset + idx],
           y = input[offset + remaining_offset + d + idx];
     out[token_idx * d + remaining_offset + idx] = Activation(x) * y;
+#endif
   }
 }
 

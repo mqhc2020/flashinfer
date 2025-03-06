@@ -341,7 +341,7 @@ gpuError_t SinglePrefillWithKVCacheCustomMask(
  * \return status Indicates whether CUDA calls are successful
  */
 template <typename DTypeQ, typename DTypeKV, typename DTypeO>
-cudaError_t SinglePrefillWithKVCache(DTypeQ* q, DTypeKV* k, DTypeKV* v, DTypeO* o, DTypeO* tmp,
+gpuError_t SinglePrefillWithKVCache(DTypeQ* q, DTypeKV* k, DTypeKV* v, DTypeO* o, DTypeO* tmp,
                                      float* lse, uint32_t num_qo_heads, uint32_t num_kv_heads,
                                      uint32_t qo_len, uint32_t kv_len, uint32_t head_dim,
                                      bool causal = true, QKVLayout kv_layout = QKVLayout::kNHD,
@@ -432,7 +432,7 @@ gpuError_t BatchPrefillWithRaggedKVCacheWrapper(
 }
 
 template <typename DTypeQ, typename DTypeKV, typename DTypeO, typename IdType>
-cudaError_t BatchPrefillWithPagedKVCacheWrapper(
+gpuError_t BatchPrefillWithPagedKVCacheWrapper(
     BatchPrefillHandler* handler, DTypeQ* q, IdType* qo_indptr, IdType* q_rope_offset,
     paged_kv_t<DTypeKV, IdType> paged_kv, DTypeO* o, float* lse, uint32_t num_qo_heads,
     bool causal = true, PosEncodingMode pos_encoding_mode = PosEncodingMode::kNone,
