@@ -16,6 +16,10 @@
 #ifndef FLASHINFER_PAGE_CUH_
 #define FLASHINFER_PAGE_CUH_
 
+#if defined(__HIPCC__) || (defined(__clang__) && defined(__HIP__)) || defined(__HIPCC_RTC__)
+#include <hip/hip_runtime.h>
+#endif
+
 #include <driver_types.h>
 
 #include <vector>
