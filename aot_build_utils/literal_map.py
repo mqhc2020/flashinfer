@@ -14,9 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from flashinfer.utils import check_hip_availability
-
-
 mask_mode_literal = {
     0: "MaskMode::kNone",
     1: "MaskMode::kCausal",
@@ -31,11 +28,23 @@ pos_encoding_mode_literal = {
 
 dtype_literal = {
     "f16": "half",
+    "bf16": "__hip_bfloat16",
+    "f32": "float",
+    "e4m3": "__hip_fp8_e4m3_fnuz",
+    "e5m2": "__hip_fp8_e5m2_fnuz",
+}
+
+''' FIXME: causes circular import
+from flashinfer.utils import check_hip_availability
+
+dtype_literal = {
+    "f16": "half",
     "bf16": "__hip_bfloat16" if check_hip_availability() else "nv_bfloat16",
     "f32": "float",
     "e4m3": "__hip_fp8_e4m3_fnuz" if check_hip_availability() else "__nv_fp8_e4m3",
     "e5m2": "__hip_fp8_e5m2_fnuz" if check_hip_availability() else "__nv_fp8_e5m2",
 }
+'''
 
 idtype_literal = {
     "i32": "int32_t",
