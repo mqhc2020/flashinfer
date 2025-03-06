@@ -302,7 +302,6 @@ if enable_aot:
         "-I/opt/rocm/include",
         "-I/opt/rocm/include/hip",
         "-L/opt/rocm/lib",
-        "-L/usr/local/lib/python3.12/dist-packages/torch/lib/", #FIXME
         "-lamdhip64",
         "-D__HIP_PLATFORM_AMD__",
         "-DPy_LIMITED_API=0x03080000",

@@ -380,7 +380,9 @@ __device__ __forceinline__ void produce_kv(smem_t<KTraits::SWIZZLE_MODE_KV> smem
     for (uint32_t i = 0; i < NUM_MMA_KV * 4 / NUM_WARPS_Q; ++i) {
 #pragma unroll
       for (uint32_t j = 0; j < NUM_MMA_D / (8 / sizeof(DTypeKV)); ++j) {
-        smem.load_128b_async<fill_mode>(*smem_offset, *gptr, kv_idx < kv_len);
+        //smem.load_128b_async<fill_mode>(*smem_offset, *gptr, kv_idx < kv_len);
+//hipFIXED
+        smem.template load_128b_async<fill_mode>(*smem_offset, *gptr, kv_idx < kv_len);
         *smem_offset = smem.template advance_offset_by_column<8>(*smem_offset, j);
         *gptr += 8 * upcast_size<DTypeKV>();
       }
@@ -397,7 +399,9 @@ __device__ __forceinline__ void produce_kv(smem_t<KTraits::SWIZZLE_MODE_KV> smem
     static_assert(NUM_MMA_KV * 2 % NUM_WARPS_Q == 0);
 #pragma unroll
     for (uint32_t i = 0; i < NUM_MMA_KV * 2 / NUM_WARPS_Q; ++i) {
-      smem.load_128b_async<fill_mode>(*smem_offset, *gptr, kv_idx < kv_len);
+      //smem.load_128b_async<fill_mode>(*smem_offset, *gptr, kv_idx < kv_len);
+//hipFIXED
+      smem.template load_128b_async<fill_mode>(*smem_offset, *gptr, kv_idx < kv_len);
       *smem_offset =
           smem.template advance_offset_by_row<NUM_WARPS * 8, UPCAST_STRIDE>(*smem_offset);
       kv_idx += NUM_WARPS * 8;
@@ -1475,7 +1479,9 @@ __global__ __launch_bounds__(KTraits::NUM_THREADS) void SinglePrefillWithKVCache
     const uint_fastdiv& group_size = params.group_size;
 
     static_assert(sizeof(DTypeQ) == 2);
-    const uint32_t lane_idx = threadIdx.x, warp_idx = get_warp_idx<KTraits>();
+    const uint32_t lane_idx = threadIdx.x,
+                   real_lane_idx = threadIdx.x,
+                   warp_idx = get_warp_idx<KTraits>();
     const uint32_t bx = blockIdx.x, chunk_idx = blockIdx.y, kv_head_idx = blockIdx.z;
     const uint32_t num_kv_heads = gridDim.z, num_qo_heads = num_kv_heads * group_size;
 
@@ -1492,10 +1498,10 @@ __global__ __launch_bounds__(KTraits::NUM_THREADS) void SinglePrefillWithKVCache
     AttentionVariant variant(params, /*batch_idx=*/0, smem);
     const uint32_t window_left = variant.window_left;
 
-    DTypeQKAccum s_frag[NUM_MMA_Q][NUM_MMA_KV][8];
-    alignas(16) float o_frag[NUM_MMA_Q][NUM_MMA_D_VO][8];
-    DTypeQKAccum m[NUM_MMA_Q][2];
-    float d[NUM_MMA_Q][2];
+    DTypeQKAccum s_frag[NUM_MMA_Q][NUM_MMA_KV][4];
+    alignas(16) float o_frag[NUM_MMA_Q][NUM_MMA_D_VO][4];
+    DTypeQKAccum m[NUM_MMA_Q][1];
+    float d[NUM_MMA_Q][1];
     float rope_freq[NUM_MMA_D_QK / 2][4];
     if constexpr (KTraits::POS_ENCODING_MODE == PosEncodingMode::kRoPELlama) {
       const float rope_rcp_scale = params.rope_rcp_scale;
@@ -1514,7 +1520,7 @@ __global__ __launch_bounds__(KTraits::NUM_THREADS) void SinglePrefillWithKVCache
                              ? o + chunk_idx * o_stride_n + (kv_head_idx * group_size) * o_stride_h
                              : o + (kv_head_idx * group_size) * o_stride_h;
 
-    uint32_t q_smem_offset_r = qo_smem.get_permuted_offset<UPCAST_STRIDE_Q>(
+    uint32_t q_smem_offset_r = qo_smem.template get_permuted_offset<UPCAST_STRIDE_Q>(
         get_warp_idx_q<KTraits>() * NUM_MMA_Q * 16 + lane_idx % 16, lane_idx / 16);
 
     load_q_global_smem<KTraits>(qo_packed_idx_base, qo_len, q_ptr_base, q_stride_n, q_stride_h,
@@ -1617,7 +1623,9 @@ __global__ __launch_bounds__(KTraits::NUM_THREADS) void SinglePrefillWithKVCache
       block.sync();
 
       // compute sfm*v
-      compute_sfm_v<KTraits>(&v_smem, &v_smem_offset_r, s_frag, o_frag, d);
+      compute_sfm_v<KTraits>(&v_smem, &v_smem_offset_r, s_frag, o_frag, d,
+                              get_warp_idx_kv<KTraits>() * NUM_MMA_KV * 16 + (real_lane_idx / 16) * 4,
+                              (lane_idx % 16) / 8);
 
       block.sync();
       produce_kv<true, SharedMemFillMode::kFillZero, KTraits>(
@@ -1749,8 +1757,13 @@ gpuError_t SinglePrefillWithKVCacheDispatched(Params params, typename Params::DT
         constexpr uint32_t num_threads = (NUM_WARPS_Q * NUM_WARPS_KV) * WARP_SIZE;
         auto kernel = SinglePrefillWithKVCacheKernel<KTraits, Params>;
         size_t smem_size = sizeof(typename KTraits::SharedStorage);
+
         FLASHINFER_CUDA_CALL(
-            gpuFuncSetAttribute(kernel, gpuFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+#if defined(__HIPCC__) || (defined(__clang__) && defined(__HIP__)) || defined(__HIPCC_RTC__)
+            gpuFuncSetAttribute(reinterpret_cast<const void*>(kernel), gpuFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+#else
+            cudaFuncSetAttribute(kernel, gpuFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+#endif
         int num_blocks_per_sm = 0;
         int num_sm = 0;
         FLASHINFER_CUDA_CALL(
