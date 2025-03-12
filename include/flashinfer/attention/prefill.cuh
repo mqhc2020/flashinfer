@@ -1885,7 +1885,6 @@ __global__ __launch_bounds__(KTraits::NUM_THREADS) void BatchPrefillWithPagedKVC
 
     const uint32_t request_idx = request_indices[bx], qo_tile_idx = qo_tile_indices[bx],
                    kv_tile_idx = kv_tile_indices[bx];
-    constexpr uint32_t num_rows_per_cta = NUM_MMA_Q * NUM_WARPS_Q * 16;
     extern __shared__ uint8_t smem[];
     auto& smem_storage = reinterpret_cast<typename KTraits::SharedStorage&>(smem);
     AttentionVariant variant(params, /*batch_idx=*/request_idx, smem);
@@ -1899,11 +1898,6 @@ __global__ __launch_bounds__(KTraits::NUM_THREADS) void BatchPrefillWithPagedKVC
     const uint32_t chunk_size = chunk_end - chunk_start;
     const uint32_t qo_upper_bound =
         min(qo_len, ceil_div((qo_tile_idx + 1) * CTA_TILE_Q, group_size));
-
-    //constexpr uint32_t head_dim = NUM_MMA_D * 16;
-    //constexpr uint32_t channel_size_128b_q = head_dim / num_elems_per_128b<DTypeQ>();
-    //constexpr uint32_t channel_size_128b_kv = head_dim / num_elems_per_128b<DTypeKV>();
-    //constexpr uint32_t channel_size_128b_out = head_dim / num_elems_per_128b<DTypeO>();
 
     DTypeQKAccum s_frag[NUM_MMA_Q][NUM_MMA_KV][4];
     alignas(16) float o_frag[NUM_MMA_Q][NUM_MMA_D_VO][4];
@@ -1932,7 +1926,8 @@ __global__ __launch_bounds__(KTraits::NUM_THREADS) void BatchPrefillWithPagedKVC
                                             (kv_head_idx * group_size) * o_stride_h;
 
     uint32_t q_smem_offset_r = qo_smem.template get_permuted_offset<UPCAST_STRIDE_Q>(
-      get_warp_idx_q<KTraits>() * NUM_MMA_Q * 16 + lane_idx % 16, real_lane_idx / 16 / 2);
+        get_warp_idx_q<KTraits>() * NUM_MMA_Q * 16 + lane_idx % 16,
+        real_lane_idx / 16 / 2);
 
     load_q_global_smem<KTraits>(qo_packed_idx_base, qo_upper_bound, q_ptr_base, q_stride_n,
         q_stride_h, group_size, &qo_smem);
@@ -2085,7 +2080,7 @@ __global__ __launch_bounds__(KTraits::NUM_THREADS) void BatchPrefillWithPagedKVC
     finalize_m<KTraits>(variant, m);
 
     // threadblock synchronization
-    threadblock_sync_mdo_states<KTraits>(o_frag, &smem_storage, m, d, warp_idx, lane_idx);
+    threadblock_sync_mdo_states<KTraits>(o_frag, &smem_storage, m, d, warp_idx, real_lane_idx);
 
     // normalize d
     normalize_d<KTraits>(o_frag, m, d);
@@ -2107,7 +2102,7 @@ __global__ __launch_bounds__(KTraits::NUM_THREADS) void BatchPrefillWithPagedKVC
 #pragma unroll
             for (uint32_t j = 0; j < 1; ++j) {
               uint32_t q, r;
-              group_size.divmod(qo_packed_idx_base + lane_idx / 4 + j * 8 + mma_q * 16, q, r);
+              group_size.divmod(qo_packed_idx_base + real_lane_idx % 16 + mma_q * 16, q, r);
               const uint32_t qo_head_idx = kv_head_idx * group_size + r;
               const uint32_t qo_idx = q;
               if (qo_idx < qo_upper_bound) {
