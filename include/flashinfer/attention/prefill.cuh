@@ -527,7 +527,7 @@ __device__ __forceinline__ void load_q_global_smem(
 #pragma unroll
     for (uint32_t mma_q = 0; mma_q < KTraits::NUM_MMA_Q; ++mma_q) {
 #pragma unroll
-      for (uint32_t j = 0; j < 2 * 2; ++j) {
+      for (uint32_t j = 0; j < 4; ++j) {
         uint32_t q, r;
         group_size.divmod(packed_offset + lane_idx / 8 + mma_q * 16 + j * 4, q, r);
         const uint32_t q_idx = q;
@@ -543,7 +543,7 @@ __device__ __forceinline__ void load_q_global_smem(
         }
         q_smem_offset_w =
             q_smem->template advance_offset_by_row<4, UPCAST_STRIDE_Q>(q_smem_offset_w) -
-            2 * KTraits::NUM_MMA_D_QK;
+            (KTraits::NUM_MMA_D_QK / 4) * 8;
       }
     }
   }
