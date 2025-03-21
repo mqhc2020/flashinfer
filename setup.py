@@ -232,6 +232,7 @@ if enable_aot:
         if check_cuda_availability():
             torch_cpp_ext.COMMON_NVCC_FLAGS.append("-DFLASHINFER_ENABLE_F16")
         elif check_hip_availability():
+            # FIXME
             torch_cpp_ext.COMMON_HIP_FLAGS.append("-DFLASHINFER_ENABLE_F16")
             torch_cpp_ext.COMMON_HIPCC_FLAGS.append("-DFLASHINFER_ENABLE_F16")
     if enable_bf16:

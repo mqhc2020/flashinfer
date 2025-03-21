@@ -19,9 +19,19 @@
 #include <torch/library.h>
 
 #if defined(__HIPCC__) || (defined(__clang__) && defined(__HIP__)) || defined(__HIPCC_RTC__)
+
+#ifdef FLASHINFER_ENABLE_BF16
 #include <hip/hip_bf16.h>
+#endif
+
+#ifdef FLASHINFER_ENABLE_F16
 #include <hip/hip_fp16.h>
+#endif
+
+#if defined(FLASHINFER_ENABLE_FP8_E4M3) || defined(FLASHINFER_ENABLE_FP8_E5M2)
 #include <hip/hip_fp8.h>
+#endif
+
 #elif defined(__CUDACC__) || defined(__NVCC__) || (defined(__clang__) && defined(__CUDA__)) || defined(__CUDACC_RTC__)
 
 #ifdef FLASHINFER_ENABLE_BF16

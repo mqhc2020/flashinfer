@@ -416,6 +416,11 @@ __device__ __forceinline__ void page_produce_kv(
     smem_t<KTraits::SWIZZLE_MODE_KV> smem, uint32_t* smem_offset,
     const paged_kv_t<typename KTraits::DTypeKV, typename KTraits::IdType>& paged_kv,
     const uint32_t kv_idx_base, const size_t* thr_local_kv_offset, const uint32_t kv_len) {
+
+  if (CUDA_WARP_SIZE <= threadIdx.x) {
+    return;
+  }
+
   // NOTE: for fp8, this function doesn't work for head_dim = 64 at the moment
   using DType = typename KTraits::DTypeKV;
   using IdType = typename KTraits::IdType;
@@ -516,6 +521,11 @@ __device__ __forceinline__ void load_q_global_smem(
     uint32_t packed_offset, const uint32_t qo_upper_bound, typename KTraits::DTypeQ* q_ptr_base,
     const uint32_t q_stride_n, const uint32_t q_stride_h, const uint_fastdiv group_size,
     smem_t<KTraits::SWIZZLE_MODE_Q>* q_smem) {
+
+  if (CUDA_WARP_SIZE <= threadIdx.x) {
+    return;
+  }
+
   using DTypeQ = typename KTraits::DTypeQ;
   constexpr uint32_t UPCAST_STRIDE_Q = KTraits::UPCAST_STRIDE_Q;
   const uint32_t lane_idx = threadIdx.x, warp_idx_x = get_warp_idx_q<KTraits>();
@@ -906,8 +916,8 @@ __device__ __forceinline__ void update_mdo_states(
                     max(s_frag[mma_q][mma_kv][j * 2 + 2], s_frag[mma_q][mma_kv][j * 2 + 3]));
             m[mma_q][j] = max(m[mma_q][j], m_local);
           }
-          m[mma_q][j] = max(m[mma_q][j], math::shfl_xor_sync(m[mma_q][j], 0x2));
-          m[mma_q][j] = max(m[mma_q][j], math::shfl_xor_sync(m[mma_q][j], 0x1));
+          m[mma_q][j] = max(m[mma_q][j], math::shfl_xor_sync(m[mma_q][j], 0x10));
+          m[mma_q][j] = max(m[mma_q][j], math::shfl_xor_sync(m[mma_q][j], 0x20));
 
           float o_scale = math::ptx_exp2(m_prev * sm_scale - m[mma_q][j] * sm_scale);
           d[mma_q][j] *= o_scale;
@@ -1267,7 +1277,7 @@ __device__ __forceinline__ void threadblock_sync_mdo_states(
                         8);
 
 #pragma unroll
-            for (uint32_t reg_id = 0; reg_id < 8; ++reg_id) {
+            for (uint32_t reg_id = 0; reg_id < 4; ++reg_id) {
               o_new[reg_id] += oi[reg_id] * o_scale[(reg_id % 4) / 2][i];
             }
           }
@@ -1295,7 +1305,7 @@ __device__ __forceinline__ void threadblock_sync_mdo_states(
                      lane_idx) *
                         8);
 #pragma unroll
-            for (uint32_t reg_id = 0; reg_id < 8; ++reg_id) {
+            for (uint32_t reg_id = 0; reg_id < 4; ++reg_id) {
               o_new[reg_id] += oi[reg_id];
             }
           }
@@ -1957,10 +1967,11 @@ __global__ __launch_bounds__(KTraits::NUM_THREADS) void BatchPrefillWithPagedKVC
     size_t thr_local_kv_offset[NUM_MMA_KV * KV_THR_LAYOUT_COL / 2 / NUM_WARPS_Q];
 
     uint32_t k_smem_offset_r = k_smem.template get_permuted_offset<UPCAST_STRIDE_K>(
-                 get_warp_idx_kv<KTraits>() * NUM_MMA_KV * 16 + 8 * (lane_idx / 16) + lane_idx % 8,
-                 real_lane_idx / 16 / 8),
+                 get_warp_idx_kv<KTraits>() * NUM_MMA_KV * 16 + lane_idx % 16,
+                 real_lane_idx / 16 / 2),
              v_smem_offset_r = v_smem.template get_permuted_offset<UPCAST_STRIDE_V>(
-                 get_warp_idx_kv<KTraits>() * NUM_MMA_KV * 16 + lane_idx % 16, lane_idx / 16),
+                 get_warp_idx_kv<KTraits>() * NUM_MMA_KV * 16 + lane_idx % 16,
+                 lane_idx / 16),
              k_smem_offset_w = k_smem.template get_permuted_offset<UPCAST_STRIDE_K>(
                  warp_idx * KV_THR_LAYOUT_ROW + lane_idx / KV_THR_LAYOUT_COL,
                  lane_idx % KV_THR_LAYOUT_COL),
